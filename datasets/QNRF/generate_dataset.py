@@ -14,10 +14,10 @@ from misc.utilities import vis_density, vis_dot_map
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Script for preprocess dataset Venice')
+        description='Script for preprocess dataset UCF-QNRF')
 
     parser.add_argument('--data-root', type=str,
-                        default='~/workspace/datasets/Venice',
+                        default='~/workspace/datasets/UCF-QNRF',
                         help='path to the raw dataset')
     parser.add_argument('--destination', type=str,
                         default=None,
@@ -37,43 +37,41 @@ def main():
 
     if dst_data_root is None:
         project_path = pathlib.Path(__file__).parent.parent.parent
-        dst_data_root = osp.join(project_path, 'processed_data/VENICE')
+        dst_data_root = osp.join(project_path, 'processed_data/QNRF')
     else:
-        dst_data_root = osp.join(osp.abspath(dst_data_root), 'VENICE')
+        dst_data_root = osp.join(osp.abspath(dst_data_root), 'QNRF')
     print('Processed files will be saved in: ', osp.abspath(dst_data_root))
 
-    for mode in ['train', 'test']:
+    for mode in ['Train', 'Test']:
         print('-' * 10, f'Processing {mode} data', '-' * 50)
 
-        src_data_dir = osp.join(src_data_root, mode + '_data')
-        dst_data_dir = osp.join(dst_data_root, mode + '_data')
+        src_data_dir = osp.join(src_data_root, mode)
 
+        dst_data_dir = osp.join(dst_data_root, mode.lower() + '_data')
         dst_img_dir = osp.join(dst_data_dir, 'imgs')
         dst_den_dir = osp.join(dst_data_dir, 'dens')
         os.makedirs(dst_img_dir, exist_ok=True)
         os.makedirs(dst_den_dir, exist_ok=True)
 
-        src_img_path_list = glob.glob(osp.join(src_data_dir, 'images', '*.jpg'))
+        src_img_path_list = glob.glob(osp.join(src_data_dir, '*.jpg'))
         if len(src_img_path_list) == 0:
             print('Error: no images found in ', src_data_root)
             return
         else:
-            src_img_path_list = sorted(src_img_path_list, key=lambda s: int(s.split('.')[0][-4:]))
+            src_img_path_list = sorted(src_img_path_list, key=lambda s: int(s[-8:-4]))
 
         for i, src_img_path in enumerate(src_img_path_list):
             print(' [image: {:3d}/{:3d}] Path: {:s}'.format(
                 i + 1, len(src_img_path_list), src_img_path))
 
-            src_ann_path = src_img_path.replace('.jpg', '.mat').replace('images', 'ground-truth')
+            src_ann_path = src_img_path.replace('.jpg', '_ann.mat')
             save_name = osp.basename(src_img_path)[:-4]
 
             dst_img_path = osp.join(dst_img_dir, save_name + '.jpg')
             dst_den_path = osp.join(dst_den_dir, save_name + '.h5')
 
             img = cv2.imread(src_img_path)
-            gt = loadmat(src_ann_path)['annotation']
-            roi = loadmat(src_ann_path)['roi']
-            roi = np.array(roi, dtype=img.dtype)
+            gt = loadmat(src_ann_path)['annPoints']
 
             src_h, src_w, _ = img.shape
             if resize_shape is None:
@@ -83,21 +81,19 @@ def main():
             rate_h, rate_w = src_h / dst_h, src_w / dst_w
 
             # resize img
-            img = cv2.bitwise_or(img, img, mask=roi)
             img = cv2.resize(img, (dst_w, dst_h))
 
             # generate dot map & density
-            resized_roi = cv2.resize(roi, (dst_w, dst_h))
             gt_count = len(gt)
+            print(gt_count)
             dot_map = np.zeros((dst_h, dst_w))
 
             for point in gt:
-                x = min(int(point[0] / rate_w), dst_w - 1)
-                y = min(int(point[1] / rate_h), dst_h - 1)
-                if resized_roi[y, x]:
-                    dot_map[y, x] = 1
+                x = min(int(point[1] / rate_h), dst_h - 1)
+                y = min(int(point[0] / rate_w), dst_w - 1)
+                dot_map[x, y] = 1
 
-            density = gaussian_filter(dot_map, sigma=5)
+            density = gaussian_filter(dot_map, sigma=15)
 
             cv2.imwrite(dst_img_path, img)
 

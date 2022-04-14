@@ -9,15 +9,15 @@ import os.path as osp
 from scipy.ndimage.filters import gaussian_filter
 from scipy.io import loadmat
 
-from misc.utilities import vis_density, vis_dot_map
+from misc.utilities import generate_density, vis_density, vis_dot_map
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Script for preprocess dataset Venice')
+        description='Script for preprocess dataset ShanghaiTech Part_A')
 
     parser.add_argument('--data-root', type=str,
-                        default='~/workspace/datasets/Venice',
+                        default='~/workspace/datasets/SHHA',
                         help='path to the raw dataset')
     parser.add_argument('--destination', type=str,
                         default=None,
@@ -37,9 +37,9 @@ def main():
 
     if dst_data_root is None:
         project_path = pathlib.Path(__file__).parent.parent.parent
-        dst_data_root = osp.join(project_path, 'processed_data/VENICE')
+        dst_data_root = osp.join(project_path, 'processed_data/SHHA')
     else:
-        dst_data_root = osp.join(osp.abspath(dst_data_root), 'VENICE')
+        dst_data_root = osp.join(osp.abspath(dst_data_root), 'SHHA')
     print('Processed files will be saved in: ', osp.abspath(dst_data_root))
 
     for mode in ['train', 'test']:
@@ -58,22 +58,22 @@ def main():
             print('Error: no images found in ', src_data_root)
             return
         else:
-            src_img_path_list = sorted(src_img_path_list, key=lambda s: int(s.split('.')[0][-4:]))
+            src_img_path_list = sorted(src_img_path_list,
+                                       key=lambda s: int(osp.basename(s)[4:-4]))
 
         for i, src_img_path in enumerate(src_img_path_list):
             print(' [image: {:3d}/{:3d}] Path: {:s}'.format(
                 i + 1, len(src_img_path_list), src_img_path))
 
-            src_ann_path = src_img_path.replace('.jpg', '.mat').replace('images', 'ground-truth')
             save_name = osp.basename(src_img_path)[:-4]
+            src_ann_path = osp.join(src_data_dir, 'ground_truth',
+                                    'GT_' + save_name + '.mat')
 
             dst_img_path = osp.join(dst_img_dir, save_name + '.jpg')
             dst_den_path = osp.join(dst_den_dir, save_name + '.h5')
 
             img = cv2.imread(src_img_path)
-            gt = loadmat(src_ann_path)['annotation']
-            roi = loadmat(src_ann_path)['roi']
-            roi = np.array(roi, dtype=img.dtype)
+            gt = loadmat(src_ann_path)['image_info'][0, 0][0, 0][0]
 
             src_h, src_w, _ = img.shape
             if resize_shape is None:
@@ -83,21 +83,21 @@ def main():
             rate_h, rate_w = src_h / dst_h, src_w / dst_w
 
             # resize img
-            img = cv2.bitwise_or(img, img, mask=roi)
             img = cv2.resize(img, (dst_w, dst_h))
 
             # generate dot map & density
-            resized_roi = cv2.resize(roi, (dst_w, dst_h))
             gt_count = len(gt)
             dot_map = np.zeros((dst_h, dst_w))
 
             for point in gt:
                 x = min(int(point[0] / rate_w), dst_w - 1)
                 y = min(int(point[1] / rate_h), dst_h - 1)
-                if resized_roi[y, x]:
-                    dot_map[y, x] = 1
+                dot_map[y, x] = 1
 
-            density = gaussian_filter(dot_map, sigma=5)
+            # generate density map with adaptive kernel size
+            density = generate_density(dot_map)
+            # generate density map with fixed kernel size
+            # density = gaussian_filter(dot_map, sigma=5)
 
             cv2.imwrite(dst_img_path, img)
 
@@ -107,8 +107,8 @@ def main():
 
             # vis_density(img, density,
             #             save_path=dst_den_path.replace('.h5', '_den.jpg'),
-            #             show_img=False)
-            #
+            #             show_img=True)
+
             # vis_dot_map(img, dot_map,
             #             save_path=dst_den_path.replace('.h5', '_dot.jpg'),
             #             show_img=False)
