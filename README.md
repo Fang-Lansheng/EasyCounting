@@ -1,11 +1,16 @@
 # EasyCounting
+
 EasyCounting is an open source crowd/vehicle counting toolbox based on PyTorch.
 
 ## Features
-- Easy plug-in. Enables you to run different models under a unified framework.
-- Configurations.
+
+- Preprocessing code and dataloader of multiple crowd/vehicle datasets.
+- PyTorch implementations of multiple SOTA methods.
+- Standardized model training/testing process.
+- Config system with modular and inheritance design.
 
 ## Requirements
+
 More details in `reqirement.txt`. 
 
 ## Quickstart
