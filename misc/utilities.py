@@ -1,6 +1,6 @@
-# -*- coding: <encoding name> -*-
+# -*- coding: utf-8 -*-
 """
-utils
+utilities
 """
 import os
 import time
@@ -138,21 +138,21 @@ def get_dataloader(cfg, mode='train'):
                                   num_workers=num_workers, pin_memory=True)
 
         return [train_loader, val_loader]
-
-    return val_loader
+    else:   # mode == 'test'
+        return val_loader
 
 
 ################################################################################
 # prepare the model trainer
 ################################################################################
 def get_trainer(cfg, data_loaders):
-    if cfg.model.name == 'CSRNet':
+    if 'CSRNet' in cfg.model.name:
         from models.CSRNet.trainer import Trainer
-    elif cfg.model.name == 'PSNet':
-        from models.PSNet.trainer import Trainer
-    elif cfg.model.name == 'DM_Count':
+    elif 'DM_Count' in cfg.model.name:
         from models.DM_Count.trainer import Trainer
-    elif cfg.model.name == 'STDNet':
+    elif 'PSNet' in cfg.model.name:
+        from models.PSNet.trainer import Trainer
+    elif 'STDNet' in cfg.model.name:
         from models.STDNet.trainer import Trainer
     else:
         return NotImplementedError
@@ -166,11 +166,11 @@ def get_trainer(cfg, data_loaders):
 # prepare the model trainer
 ################################################################################
 def get_tester(ckpt, cfg, val_loader, vis_options):
-    if cfg.model.name == 'CSRNet':
+    if 'CSRNet' in cfg.model.name:
         from models.CSRNet.tester import Tester
-    elif cfg.model.name == 'DM_Count':
+    elif 'DM_Count' in cfg.model.name:
         from models.DM_Count.tester import Tester
-    elif cfg.model.name == 'PSNet':
+    elif 'PSNet' in cfg.model.name:
         from models.PSNet.tester import Tester
     elif 'STDNet' in cfg.model.name:
         from models.STDNet.tester import Tester
@@ -300,19 +300,6 @@ def plot_density(dm, dm_dir, img_name, if_count=False):
 
 
 ################################################################################
-# concat the raw image and the warped image
-################################################################################
-def plot_concat(img_raw, img_warped, save_dir, img_name):
-    height, width = img_raw.height, img_raw.width
-
-    dst = Image.new('RGB', (width * 2, height))
-    dst.paste(img_raw, (0, 0))
-    dst.paste(img_warped, (width, 0))
-
-    dst.save(osp.join(save_dir, img_name))
-
-
-################################################################################
 # save density map as .h5 file
 ################################################################################
 def save_h5(gt_warped, save_dir, img_name, name='dot'):
@@ -348,7 +335,7 @@ def draw_grid(x, grid_size=0, grid_interval=15, grid_color=1):
 
 
 ################################################################################
-# draw grid on image
+# generate density map with adaptive kernel size
 ################################################################################
 def generate_density(dot_map):
     shape = dot_map.shape
@@ -358,9 +345,6 @@ def generate_density(dot_map):
 
     if gt_count == 0:
         return density
-
-    # points = np.array(zip(np.nonzero(dot_map)[1],
-    #                       np.nonzero(dot_map)[0]))
 
     points = np.array(np.where(dot_map > 0), dtype=np.float64).transpose()
 
@@ -379,63 +363,6 @@ def generate_density(dot_map):
         density += gaussian_filter(point2d, sigma, mode='constant')
 
     return density
-
-
-################################################################################
-# rect the dot map
-################################################################################
-def rect_dot_map(dot_map):
-    _, _, height, width = dot_map.shape
-    peaks = torch.zeros_like(dot_map, requires_grad=True)
-
-    coordinates = torch.where(dot_map[0][0] > 0)
-    octopath = [[-1, -1], [-1, 0], [-1, 1], [0, -1],
-                [0, 1], [1, -1], [1, 0], [1, 1]]
-
-    for i in range(len(coordinates[0])):
-        # [x0, y0] 为 warped_dot_map 上值不为 0 的点
-        x0, y0 = coordinates[0][i], coordinates[1][i]
-        # [x0, y0] 点的像素值
-        val_0 = dot_map[0, 0, x0, y0]
-
-        count = 0
-
-        for offset in octopath:
-            # [x, y] 为 warped_dot_map 上 [x0, y0] 的邻近点
-            x, y = x0 + offset[0], y0 + offset[1]
-
-            # 确保 [x, y] 在坐标范围内
-            if 0 <= x < height and 0 <= y < width:
-                # [x, y] 点的像素值
-                val = dot_map[0, 0, x, y]
-                if val_0 > val:
-                    count += 1
-
-        if count == 8:
-            peaks[0, 0, x0, y0] = 1
-
-    return peaks
-
-
-def is_close(point_1, point_2):
-    u_1, v_1 = torch.floor(point_1[0]), torch.floor(point_1[1])
-    u_2, v_2 = torch.floor(point_2[0]), torch.floor(point_2[1])
-
-    if torch.abs(u_1 - u_2) > 1 or torch.abs(v_1 - v_2) > 1:
-        return False
-    else:
-        return True
-
-
-def resize_grid(grid, shape):
-    # type: (torch.Tensor, tuple) -> torch.Tensor
-    grid = grid.permute(0, 3, 1, 2).contiguous()
-    grid = F.interpolate(grid, size=shape,
-                         mode='bilinear', align_corners=True)
-
-    grid = grid.permute(0, 2, 3, 1).contiguous()
-
-    return grid
 
 
 ################################################################################
@@ -535,7 +462,7 @@ class Timer(object):
 ################################################################################
 # Reverse image transformation
 ################################################################################
-class DeNormalize(object):
+class de_normalize(object):
     def __init__(self, mean, std):
         self.mean = mean
         self.std = std
@@ -549,10 +476,13 @@ class DeNormalize(object):
 ################################################################################
 # Visualize density map and raw image simultaneously
 ################################################################################
-def vis_den(im, density, save_path):
+def vis_density(im, density, save_path, show_img=True, alpha=0.6):
     dm_frame = plt.gca()
-    plt.imshow(im)
-    plt.imshow(density, 'jet', alpha=0.4)
+    if show_img:
+        plt.imshow(im)
+        plt.imshow(density, 'jet', alpha=alpha)
+    else:
+        plt.imshow(density, 'jet')
 
     dm_frame.axes.get_yaxis().set_visible(False)
     dm_frame.axes.get_xaxis().set_visible(False)
@@ -569,7 +499,7 @@ def vis_den(im, density, save_path):
 ################################################################################
 # Visualize dot map and raw image simultaneously
 ################################################################################
-def vis_dot(im, dot_map, save_path):
+def vis_dot_map(im, dot_map, save_path, show_img=True):
     pts = np.asarray(np.where(dot_map > 0)).transpose()
     permutation = [1, 0]
     idx = np.empty_like(permutation)
@@ -577,7 +507,8 @@ def vis_dot(im, dot_map, save_path):
     pts[:] = pts[:, idx]
 
     dm_frame = plt.gca()
-    plt.imshow(im)
+    if show_img:
+        plt.imshow(im)
 
     dm_frame.axes.get_yaxis().set_visible(False)
     dm_frame.axes.get_xaxis().set_visible(False)

@@ -1,3 +1,16 @@
+"""
+STDNet
+
+Paper:
+    Y. -J. Ma, H. -H. Shuai and W. -H. Cheng, "Spatiotemporal Dilated
+    Convolution With Uncertain Matching for Video-Based Crowd Estimation,"
+    in IEEE Transactions on Multimedia, vol. 24, pp. 261-273, 2022,
+    doi: 10.1109/TMM.2021.3050059.
+
+GitHub repository (Tensorflow version):
+    https://github.com/stk513486/STDNet
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
